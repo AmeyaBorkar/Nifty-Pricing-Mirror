@@ -4,3 +4,4 @@ requests>=2.31
 rich>=13.7
 python-dotenv>=1.0
 pyotp>=2.9
+flask>=3.0

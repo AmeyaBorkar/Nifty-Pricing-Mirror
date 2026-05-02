@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Nifty Pricing Mirror</title>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark"></span>
+      <h1>Nifty Pricing Mirror</h1>
+    </div>
+    <div class="status">
+      <span class="status-line">
+        <span class="dot" id="pulse"></span>
+        <span id="ts">—</span>
+      </span>
+      <span class="bias-badge bias-unknown" id="bias">UNKNOWN</span>
+    </div>
+  </header>
+
+  <section class="cards">
+    <div class="card">
+      <div class="label">Tracked</div>
+      <div class="value" id="total">—</div>
+    </div>
+    <div class="card card-premium">
+      <div class="label">At Premium</div>
+      <div class="value" id="premium">—</div>
+    </div>
+    <div class="card card-discount">
+      <div class="label">At Discount</div>
+      <div class="value" id="discount">—</div>
+    </div>
+    <div class="card card-flat">
+      <div class="label">Flat</div>
+      <div class="value" id="flat">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Basis %</div>
+      <div class="value" id="avg-basis">—</div>
+    </div>
+    <div class="card">
+      <div class="label">Avg Annualised %</div>
+      <div class="value" id="avg-ann">—</div>
+    </div>
+  </section>
+
+  <section class="movers">
+    <div class="movers-col">
+      <h2>Top 10 Premiums</h2>
+      <ol class="bars" id="top-premiums"></ol>
+    </div>
+    <div class="movers-col">
+      <h2>Top 10 Discounts</h2>
+      <ol class="bars" id="top-discounts"></ol>
+    </div>
+  </section>
+
+  <section class="table-wrap">
+    <div class="table-header">
+      <h2>All stocks</h2>
+      <input id="filter" type="search" placeholder="Filter by symbol…" autocomplete="off" />
+    </div>
+    <table id="data-table">
+      <thead>
+        <tr>
+          <th data-sort="rank" class="sortable">#</th>
+          <th data-sort="symbol" class="sortable">Symbol</th>
+          <th data-sort="spot" class="sortable num">Spot</th>
+          <th data-sort="future" class="sortable num">Futures</th>
+          <th>Contract</th>
+          <th data-sort="days_to_expiry" class="sortable num">DTE</th>
+          <th data-sort="basis" class="sortable num">Basis</th>
+          <th data-sort="basis_pct" class="sortable num active">Basis %</th>
+          <th data-sort="annualised_pct" class="sortable num">Ann. %</th>
+          <th>Stance</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <p class="hint" id="empty-hint">Waiting for first snapshot…</p>
+  </section>
+
+  <footer>
+    <span>Polls <code>/api/snapshot</code> every 3s · data via Groww trading API</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

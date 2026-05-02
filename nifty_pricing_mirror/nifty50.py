@@ -1,0 +1,61 @@
+"""Nifty 50 constituent universe.
+
+The default list mirrors the canonical NSE archive
+(`ind_nifty50list.csv`). NSE rebalances the index periodically — bump the
+constants here when the index reshuffles.
+"""
+
+from __future__ import annotations
+
+NIFTY_50_SYMBOLS: tuple[str, ...] = (
+    "ADANIENT",
+    "ADANIPORTS",
+    "APOLLOHOSP",
+    "ASIANPAINT",
+    "AXISBANK",
+    "BAJAJ-AUTO",
+    "BAJFINANCE",
+    "BAJAJFINSV",
+    "BEL",
+    "BHARTIARTL",
+    "CIPLA",
+    "COALINDIA",
+    "DRREDDY",
+    "EICHERMOT",
+    "ETERNAL",
+    "GRASIM",
+    "HCLTECH",
+    "HDFCBANK",
+    "HDFCLIFE",
+    "HINDALCO",
+    "HINDUNILVR",
+    "ICICIBANK",
+    "ITC",
+    "INFY",
+    "INDIGO",
+    "JSWSTEEL",
+    "JIOFIN",
+    "KOTAKBANK",
+    "LT",
+    "M&M",
+    "MARUTI",
+    "MAXHEALTH",
+    "NTPC",
+    "NESTLEIND",
+    "ONGC",
+    "POWERGRID",
+    "RELIANCE",
+    "SBILIFE",
+    "SHRIRAMFIN",
+    "SBIN",
+    "SUNPHARMA",
+    "TCS",
+    "TATACONSUM",
+    "TMPV",
+    "TATASTEEL",
+    "TECHM",
+    "TITAN",
+    "TRENT",
+    "ULTRACEMCO",
+    "WIPRO",
+)

@@ -1,9 +1,12 @@
-"""Rich-based rendering of the spot/futures basis surface."""
+"""Rich-based live rendering of the spot/futures basis surface."""
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from rich.align import Align
-from rich.console import Group
+from rich.console import Console, Group
+from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
@@ -135,3 +138,33 @@ def _index_bias(snapshot: IndexSnapshot) -> Text:
     if d > p * 1.5:
         return Text("BACKWARDATION (futures cheap)", style="bold red")
     return Text("MIXED", style="bold yellow")
+
+
+class LiveSurface:
+    """Context manager around `rich.live.Live` for the basis table."""
+
+    def __init__(self, console: Console | None = None):
+        self._console = console or Console()
+        self._live: Live | None = None
+
+    def __enter__(self) -> "LiveSurface":
+        self._live = Live(
+            renderable=Text(""),
+            console=self._console,
+            refresh_per_second=4,
+            screen=False,
+        )
+        self._live.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        if self._live is not None:
+            self._live.__exit__(exc_type, exc, tb)
+
+    def update(self, snapshot: IndexSnapshot) -> None:
+        assert self._live is not None
+        self._live.update(render_snapshot(snapshot))
+
+    def show_message(self, message: str, *, style: str = "yellow") -> None:
+        assert self._live is not None
+        self._live.update(Panel(Text(message, style=style), title="Status"))

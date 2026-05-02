@@ -91,8 +91,7 @@ class GrowwClient:
             response = self._api.get_ltp(
                 segment=segment, exchange_trading_symbols=tuple(chunk)
             )
-            if isinstance(response, dict):
-                out.update({k: float(v) for k, v in response.items() if isinstance(v, (int, float))})
+            out.update(_normalise_ltp_response(response))
         return out
 
     def quote(self, segment: str, exchange: str, trading_symbol: str) -> dict:
@@ -112,3 +111,29 @@ class GrowwClient:
 def _chunks(seq: Sequence[str], size: int) -> Iterable[Sequence[str]]:
     for i in range(0, len(seq), size):
         yield seq[i : i + size]
+
+
+def _normalise_ltp_response(resp) -> dict[str, float]:
+    """Groww has shipped slightly different LTP shapes across SDK versions.
+
+    Accepts either:
+      * `{ "NSE_RELIANCE": 1234.5 }`
+      * `{ "NSE_RELIANCE": { "ltp": 1234.5, ... } }`
+      * `{ "data": { ... } }`
+    """
+
+    if isinstance(resp, dict) and "data" in resp and isinstance(resp["data"], dict):
+        resp = resp["data"]
+    if not isinstance(resp, dict):
+        return {}
+
+    out: dict[str, float] = {}
+    for key, value in resp.items():
+        if isinstance(value, (int, float)):
+            out[key] = float(value)
+        elif isinstance(value, dict):
+            for candidate in ("ltp", "last_price", "lastPrice", "price"):
+                if candidate in value and value[candidate] is not None:
+                    out[key] = float(value[candidate])
+                    break
+    return out

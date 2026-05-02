@@ -15,8 +15,8 @@ from .config import Settings
 from .display import LiveSurface, render_snapshot
 from .groww_client import AuthenticationError, GrowwClient
 from .instruments import InstrumentsRepo, resolve_universe
-from .nifty50 import load_symbols
 from .pricing import PricingEngine
+from .universe import DEFAULT_INDEX, INDICES, load_symbols
 
 log = logging.getLogger("nifty_mirror")
 
@@ -25,9 +25,16 @@ def _build_argparser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="nifty-mirror",
         description=(
-            "Live spot vs nearest-futures basis surface for the Nifty 50, "
+            "Live spot vs nearest-futures basis surface for an NSE index, "
             "powered by the Groww trading API."
         ),
+    )
+    p.add_argument(
+        "--index",
+        choices=sorted(INDICES.keys()),
+        default=DEFAULT_INDEX,
+        help=f"Bundled index to track (default: {DEFAULT_INDEX}). "
+             "Ignored when --symbols-file is given.",
     )
     p.add_argument(
         "--interval",
@@ -46,7 +53,7 @@ def _build_argparser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Optional path to a text file of underlying symbols (one per line, "
-            "'#' for comments). Defaults to the bundled Nifty 50 list."
+            "'#' for comments). Overrides --index when set."
         ),
     )
     p.add_argument(
@@ -71,11 +78,9 @@ def main(argv: list[str] | None = None) -> int:
     settings = Settings.from_env()
     interval = args.interval if args.interval is not None else settings.refresh_seconds
 
-    symbols = load_symbols(args.symbols_file)
-    console.print(
-        f"[bold]Universe:[/bold] {len(symbols)} symbols "
-        f"({'custom' if args.symbols_file else 'default Nifty 50'})"
-    )
+    symbols = load_symbols(args.symbols_file, index=args.index)
+    label = "custom" if args.symbols_file else args.index
+    console.print(f"[bold]Universe:[/bold] {len(symbols)} symbols ({label})")
 
     try:
         client = GrowwClient(settings)

@@ -2,7 +2,7 @@
 
 Exercises everything except the actual Groww auth + LTP call:
   1. Downloads the public instrument master CSV.
-  2. Resolves the Nifty 50 universe to (spot, near-future) pairs.
+  2. Resolves the default universe to (spot, near-future) pairs.
   3. Runs `PricingEngine.snapshot` against a fake client that returns
      deterministic synthetic LTPs so we can validate rendering.
 """
@@ -16,8 +16,8 @@ from rich.console import Console
 
 from nifty_pricing_mirror.display import render_snapshot
 from nifty_pricing_mirror.instruments import InstrumentsRepo, resolve_universe
-from nifty_pricing_mirror.nifty50 import NIFTY_50_SYMBOLS
 from nifty_pricing_mirror.pricing import PricingEngine
+from nifty_pricing_mirror.universe import load_symbols
 
 
 class FakeClient:
@@ -48,8 +48,9 @@ def main() -> int:
     df = repo.load()
     console.print(f"[bold]Instruments loaded:[/bold] {len(df):,} rows")
 
-    pairs, skipped = resolve_universe(repo, list(NIFTY_50_SYMBOLS), as_of=date.today())
-    console.print(f"[bold]Resolved pairs:[/bold] {len(pairs)} / {len(NIFTY_50_SYMBOLS)}")
+    symbols = load_symbols()
+    pairs, skipped = resolve_universe(repo, list(symbols), as_of=date.today())
+    console.print(f"[bold]Resolved pairs:[/bold] {len(pairs)} / {len(symbols)}")
     if skipped:
         console.print(f"[yellow]Skipped:[/yellow] {', '.join(skipped)}")
 

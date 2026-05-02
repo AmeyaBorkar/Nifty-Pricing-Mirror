@@ -17,6 +17,7 @@ from .display import LiveSurface, render_snapshot
 from .groww_client import AuthenticationError, GrowwClient
 from .instruments import InstrumentsRepo, resolve_universe
 from .pricing import IndexSnapshot, PricingEngine
+from .server import DashboardServer
 from .universe import DEFAULT_INDEX, INDICES, load_symbols
 
 log = logging.getLogger("nifty_mirror")
@@ -78,6 +79,24 @@ def _build_argparser() -> argparse.ArgumentParser:
         ),
     )
     p.add_argument(
+        "--serve",
+        nargs="?",
+        const=8080,
+        type=int,
+        default=None,
+        metavar="PORT",
+        help=(
+            "Start the HTTP dashboard alongside the live loop. Default port "
+            "is 8080 (e.g. `--serve` or `--serve 9000`). Disables the in-"
+            "terminal table to keep stdout clean for status messages."
+        ),
+    )
+    p.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Dashboard bind address. Use 0.0.0.0 to expose on the LAN.",
+    )
+    p.add_argument(
         "--verbose",
         "-v",
         action="store_true",
@@ -126,17 +145,40 @@ def main(argv: list[str] | None = None) -> int:
     engine = PricingEngine(client, pairs)
 
     if args.csv_out:
-        console.print(f"[dim]Snapshot CSV → {args.csv_out}[/dim]")
+        console.print(f"[dim]Snapshot CSV -> {args.csv_out}[/dim]")
     if args.csv_history:
-        console.print(f"[dim]History CSV  → {args.csv_history}[/dim]")
+        console.print(f"[dim]History CSV  -> {args.csv_history}[/dim]")
 
-    if args.once:
-        snapshot = engine.snapshot()
-        console.print(render_snapshot(snapshot))
-        _export_snapshot(snapshot, args.csv_out, args.csv_history)
-        return 0
+    server: DashboardServer | None = None
+    if args.serve is not None:
+        server = DashboardServer(host=args.host, port=args.serve)
+        try:
+            server.start()
+        except OSError as exc:
+            console.print(
+                f"[bold red]Could not bind dashboard to {args.host}:{args.serve}: {exc}[/bold red]"
+            )
+            return 4
+        console.print(
+            f"[bold cyan]Dashboard:[/bold cyan] {server.url}  "
+            f"[dim](Ctrl+C to stop)[/dim]"
+        )
 
-    return _run_live(engine, interval, console, args.csv_out, args.csv_history)
+    try:
+        if args.once:
+            snapshot = engine.snapshot()
+            console.print(render_snapshot(snapshot))
+            _export_snapshot(snapshot, args.csv_out, args.csv_history)
+            if server is not None:
+                server.update(snapshot)
+            return 0
+
+        return _run_live(
+            engine, interval, console, args.csv_out, args.csv_history, server
+        )
+    finally:
+        if server is not None:
+            server.stop()
 
 
 def _run_live(
@@ -145,7 +187,14 @@ def _run_live(
     console: Console,
     csv_out: Path | None,
     csv_history: Path | None,
+    server: DashboardServer | None,
 ) -> int:
+    # When serving the dashboard, skip the in-terminal Live table — the
+    # browser is the primary surface and keeping stdout clean lets the user
+    # follow refresh status / errors line by line.
+    if server is not None:
+        return _run_headless_loop(engine, interval, console, csv_out, csv_history, server)
+
     try:
         with LiveSurface(console=console) as surface:
             surface.show_message("Fetching first snapshot…")
@@ -157,10 +206,44 @@ def _run_live(
                 except Exception as exc:  # transient API errors should not kill the loop
                     log.warning("Snapshot refresh failed: %s", exc)
                     surface.show_message(
-                        f"Refresh failed: {exc}\nRetrying in {interval:.1f}s…",
+                        f"Refresh failed: {exc}\nRetrying in {interval:.1f}s...",
                         style="red",
                     )
                 time.sleep(interval)
+    except KeyboardInterrupt:
+        console.print("\n[dim]Stopped.[/dim]")
+        return 0
+
+
+def _run_headless_loop(
+    engine: PricingEngine,
+    interval: float,
+    console: Console,
+    csv_out: Path | None,
+    csv_history: Path | None,
+    server: DashboardServer,
+) -> int:
+    console.print(f"[dim]Refreshing every {interval:.1f}s. Ctrl+C to stop.[/dim]")
+    refresh_count = 0
+    try:
+        while True:
+            try:
+                snapshot = engine.snapshot()
+                server.update(snapshot)
+                _export_snapshot(snapshot, csv_out, csv_history)
+                refresh_count += 1
+                if refresh_count % 20 == 1:
+                    console.print(
+                        f"[dim]{snapshot.timestamp:%H:%M:%S}[/dim] "
+                        f"refresh #{refresh_count} "
+                        f"premium={snapshot.premium_count} "
+                        f"discount={snapshot.discount_count} "
+                        f"missing={snapshot.missing_count}"
+                    )
+            except Exception as exc:
+                log.warning("Snapshot refresh failed: %s", exc)
+                console.print(f"[red]refresh failed:[/red] {exc}")
+            time.sleep(interval)
     except KeyboardInterrupt:
         console.print("\n[dim]Stopped.[/dim]")
         return 0

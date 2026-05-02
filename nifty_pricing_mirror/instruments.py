@@ -1,10 +1,11 @@
-"""Loads Groww's instrument master and resolves cash-segment spot rows."""
+"""Loads Groww's instrument master and resolves each stock to its near futures contract."""
 
 from __future__ import annotations
 
 import logging
 import time
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -13,6 +14,20 @@ import requests
 from .config import INSTRUMENTS_CACHE_PATH, INSTRUMENTS_URL
 
 log = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class FuturesContract:
+    underlying: str
+    trading_symbol: str       # e.g. "RELIANCE25MAYFUT"
+    expiry: date
+    lot_size: int
+    tick_size: float
+    exchange: str             # "NSE"
+
+    @property
+    def exchange_trading_symbol(self) -> str:
+        return f"{self.exchange}_{self.trading_symbol}"
 
 
 @dataclass(frozen=True)
@@ -26,8 +41,14 @@ class SpotInstrument:
         return f"{self.exchange}_{self.trading_symbol}"
 
 
+@dataclass(frozen=True)
+class InstrumentPair:
+    spot: SpotInstrument
+    future: FuturesContract
+
+
 class InstrumentsRepo:
-    """Downloads + caches the Groww instruments CSV; lazy-loads into pandas."""
+    """Loads + queries the Groww instruments CSV with on-disk caching."""
 
     def __init__(self, cache_hours: float = 12.0, cache_path: Path = INSTRUMENTS_CACHE_PATH):
         self._cache_hours = cache_hours
@@ -46,6 +67,7 @@ class InstrumentsRepo:
             log.info("Downloading instruments from %s", INSTRUMENTS_URL)
             df = self._download_and_cache()
 
+        # Normalise dtypes once so the rest of the code can rely on them.
         if "expiry_date" in df.columns:
             df["expiry_date"] = pd.to_datetime(df["expiry_date"], errors="coerce").dt.date
         for col in ("trading_symbol", "underlying_symbol", "exchange",
@@ -70,9 +92,27 @@ class InstrumentsRepo:
         return pd.read_csv(self._cache_path, low_memory=False)
 
     # --------------------------------------------------------------- queries
-    def resolve_spot(self, symbol: str) -> SpotInstrument | None:
+    def resolve_pair(
+        self,
+        symbol: str,
+        as_of: date | None = None,
+    ) -> InstrumentPair | None:
+        """Return matched spot+future for `symbol`, or None if either side is missing."""
+
         df = self.load()
-        return self._resolve_spot(df, symbol)
+        as_of = as_of or date.today()
+
+        spot = self._resolve_spot(df, symbol)
+        if spot is None:
+            log.warning("No NSE cash instrument found for %s", symbol)
+            return None
+
+        future = self._resolve_near_future(df, symbol, as_of)
+        if future is None:
+            log.warning("No active NSE futures contract found for %s", symbol)
+            return None
+
+        return InstrumentPair(spot=spot, future=future)
 
     @staticmethod
     def _resolve_spot(df: pd.DataFrame, symbol: str) -> SpotInstrument | None:
@@ -101,3 +141,45 @@ class InstrumentsRepo:
             trading_symbol=str(row["trading_symbol"]),
             exchange="NSE",
         )
+
+    @staticmethod
+    def _resolve_near_future(
+        df: pd.DataFrame, symbol: str, as_of: date
+    ) -> FuturesContract | None:
+        mask = (
+            (df["underlying_symbol"] == symbol)
+            & (df["instrument_type"] == "FUT")
+            & (df["exchange"] == "NSE")
+            & (df["segment"] == "FNO")
+            & (df["expiry_date"].notna())
+            & (df["expiry_date"] >= as_of)
+        )
+        rows = df.loc[mask].sort_values("expiry_date")
+        if rows.empty:
+            return None
+
+        row = rows.iloc[0]
+        return FuturesContract(
+            underlying=symbol,
+            trading_symbol=str(row["trading_symbol"]),
+            expiry=row["expiry_date"],
+            lot_size=int(row["lot_size"]) if pd.notna(row.get("lot_size")) else 0,
+            tick_size=float(row["tick_size"]) if pd.notna(row.get("tick_size")) else 0.05,
+            exchange="NSE",
+        )
+
+
+def resolve_universe(
+    repo: InstrumentsRepo, symbols: list[str], as_of: date | None = None
+) -> tuple[list[InstrumentPair], list[str]]:
+    """Return (resolved pairs, list of symbols that could not be matched)."""
+
+    resolved: list[InstrumentPair] = []
+    skipped: list[str] = []
+    for symbol in symbols:
+        pair = repo.resolve_pair(symbol, as_of=as_of)
+        if pair is None:
+            skipped.append(symbol)
+        else:
+            resolved.append(pair)
+    return resolved, skipped

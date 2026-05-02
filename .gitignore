@@ -1,0 +1,22 @@
+# Build / cache artefacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+
+# Local secrets and instrument cache
+.env
+.cache/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
+
+# Internal build helpers
+.build_stash/

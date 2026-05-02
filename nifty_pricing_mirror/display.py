@@ -1,15 +1,18 @@
-"""Rich-based rendering of the spot/futures basis table."""
+"""Rich-based rendering of the spot/futures basis surface."""
 
 from __future__ import annotations
 
+from rich.align import Align
+from rich.console import Group
+from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
 from .pricing import IndexSnapshot, PriceRow, Stance
 
 
-def render_snapshot(snapshot: IndexSnapshot) -> Table:
-    return _build_table(snapshot)
+def render_snapshot(snapshot: IndexSnapshot) -> Group:
+    return Group(_build_table(snapshot), _build_footer(snapshot))
 
 
 def _build_table(snapshot: IndexSnapshot) -> Table:
@@ -88,3 +91,47 @@ def _stance_text(stance: Stance) -> Text:
     if stance is Stance.FLAT:
         return Text("~ FLAT", style="yellow")
     return Text(".. N/A", style="dim italic")
+
+
+def _build_footer(snapshot: IndexSnapshot) -> Panel:
+    avg_basis = _signed(snapshot.avg_basis_pct, fmt="{:+.3f}%")
+    avg_ann = _signed(snapshot.avg_annualised_pct, fmt="{:+.2f}%")
+
+    bias = _index_bias(snapshot)
+
+    line1 = Text.assemble(
+        ("Index basis bias  ", "bold"),
+        bias,
+        ("    avg basis ", "dim"),
+        avg_basis,
+        ("    avg annualized ", "dim"),
+        avg_ann,
+    )
+    line2 = Text.assemble(
+        (f"  premium {snapshot.premium_count}", "green"),
+        ("   ", ""),
+        (f"discount {snapshot.discount_count}", "red"),
+        ("   ", ""),
+        (f"flat {snapshot.flat_count}", "yellow"),
+        ("   ", ""),
+        (f"missing {snapshot.missing_count}", "dim"),
+        ("   total ", "dim"),
+        (str(snapshot.total), "bold"),
+    )
+
+    return Panel(
+        Align.left(Group(line1, line2)),
+        title="Index Snapshot",
+        border_style="blue",
+    )
+
+
+def _index_bias(snapshot: IndexSnapshot) -> Text:
+    p, d = snapshot.premium_count, snapshot.discount_count
+    if p == 0 and d == 0:
+        return Text("UNKNOWN", style="dim")
+    if p > d * 1.5:
+        return Text("CONTANGO (futures rich)", style="bold green")
+    if d > p * 1.5:
+        return Text("BACKWARDATION (futures cheap)", style="bold red")
+    return Text("MIXED", style="bold yellow")

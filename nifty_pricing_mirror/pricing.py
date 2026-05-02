@@ -1,4 +1,4 @@
-"""Pairs spot/futures LTPs and derives the per-stock basis."""
+"""Pairs spot/futures LTPs and derives the basis surface."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ class PriceRow:
     days_to_expiry: int
     basis: float | None           # future - spot
     basis_pct: float | None       # (future / spot - 1) * 100
-    annualised_pct: float | None  # basis_pct * (365 / dte)
+    annualised_pct: float | None  # basis_pct * (365 / dte)  (dte floored at 1)
     stance: Stance
 
 
@@ -71,23 +71,41 @@ class PricingEngine:
         )
 
         rows: list[PriceRow] = []
+        basis_pct_values: list[float] = []
+        annualised_values: list[float] = []
+        premium = discount = flat = missing = 0
+
         for pair in self._pairs:
             spot = spot_ltps.get(pair.spot.exchange_trading_symbol)
             future = future_ltps.get(pair.future.exchange_trading_symbol)
             dte = max((pair.future.expiry - as_of.date()).days, 0)
-            rows.append(self._build_row(pair, spot, future, dte))
 
-        # Aggregation lands in the next commit — for now ship a snapshot whose
-        # counts/averages are zero so the rest of the system can wire up.
+            row = self._build_row(pair, spot, future, dte)
+            rows.append(row)
+
+            if row.stance is Stance.UNKNOWN:
+                missing += 1
+            elif row.stance is Stance.PREMIUM:
+                premium += 1
+            elif row.stance is Stance.DISCOUNT:
+                discount += 1
+            else:
+                flat += 1
+
+            if row.basis_pct is not None:
+                basis_pct_values.append(row.basis_pct)
+            if row.annualised_pct is not None:
+                annualised_values.append(row.annualised_pct)
+
         return IndexSnapshot(
             timestamp=as_of,
             rows=tuple(rows),
-            avg_basis_pct=None,
-            avg_annualised_pct=None,
-            premium_count=0,
-            discount_count=0,
-            flat_count=0,
-            missing_count=0,
+            avg_basis_pct=_mean(basis_pct_values),
+            avg_annualised_pct=_mean(annualised_values),
+            premium_count=premium,
+            discount_count=discount,
+            flat_count=flat,
+            missing_count=missing,
         )
 
     @staticmethod
@@ -133,3 +151,9 @@ class PricingEngine:
             annualised_pct=annualised,
             stance=stance,
         )
+
+
+def _mean(values: list[float]) -> float | None:
+    if not values:
+        return None
+    return sum(values) / len(values)
